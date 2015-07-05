@@ -20,6 +20,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.ClassUtils;
 import ru.trylogic.spring.boot.thrift.annotation.ThriftHandler;
 import ru.trylogic.spring.boot.thrift.aop.ExceptionsThriftMethodInterceptor;
 import ru.trylogic.spring.boot.thrift.aop.MetricsThriftMethodInterceptor;
@@ -79,17 +80,17 @@ public class ThriftAutoConfiguration {
         ThriftConfigurer thriftConfigurer;
 
         @Override
-        @SneakyThrows({NoSuchMethodException.class, ClassNotFoundException.class})
+        @SneakyThrows({NoSuchMethodException.class, ClassNotFoundException.class, InstantiationException.class, IllegalAccessException.class})
         public void onStartup(ServletContext servletContext) throws ServletException {
             for (String beanName : applicationContext.getBeanNamesForAnnotation(ThriftHandler.class)) {
                 ThriftHandler annotation = applicationContext.findAnnotationOnBean(beanName, ThriftHandler.class);
 
-                registerHandler(servletContext, annotation.value(), applicationContext.getBean(beanName));
+                registerHandler(servletContext, annotation.value(), annotation.factory(), applicationContext.getBean(beanName));
             }
         }
 
-        protected void registerHandler(ServletContext servletContext, String[] urls, Object handler) throws ClassNotFoundException, NoSuchMethodException {
-            Class<?>[] handlerInterfaces = handler.getClass().getInterfaces();
+        protected void registerHandler(ServletContext servletContext, String[] urls, Class<? extends TProtocolFactory> factory, Object handler) throws ClassNotFoundException, NoSuchMethodException, IllegalAccessException, InstantiationException {
+            Class<?>[] handlerInterfaces = ClassUtils.getAllInterfaces(handler);
 
             Class ifaceClass = null;
             Class<TProcessor> processorClass = null;
@@ -135,9 +136,14 @@ public class ThriftAutoConfiguration {
 
             TProcessor processor = BeanUtils.instantiateClass(processorConstructor, handler);
 
-            TServlet servlet = getServlet(processor, protocolFactory);
+            TServlet servlet;
+            if (TProtocolFactory.class.equals(factory)) {
+                servlet = getServlet(processor, protocolFactory);
+            } else {
+                servlet = getServlet(processor, factory.newInstance());
+            }
 
-            String servletBeanName = ifaceClass.getDeclaringClass().getSimpleName() + "Servlet";
+            String servletBeanName = handler.getClass().getSimpleName() + "Servlet";
 
             ServletRegistration.Dynamic registration = servletContext.addServlet(servletBeanName, servlet);
 

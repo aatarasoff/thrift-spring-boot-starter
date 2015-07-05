@@ -1,5 +1,6 @@
 package ru.trylogic.spring.boot.thrift.annotation;
 
+import org.apache.thrift.protocol.TProtocolFactory;
 import org.springframework.stereotype.Component;
 
 import java.lang.annotation.Documented;
@@ -14,4 +15,5 @@ import java.lang.annotation.Target;
 @Component
 public @interface ThriftHandler {
     String[] value() default {};
+    Class<? extends TProtocolFactory> factory() default TProtocolFactory.class;
 }
